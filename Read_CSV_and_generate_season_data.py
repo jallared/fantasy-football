@@ -1,19 +1,40 @@
 import string
 import statistics
-import csv
+import xlsxwriter
 
 class Team(object):
 	def __init__(self):
 		self.name = ""
+		self.points_scored = 0
+		self.points_scored_list = []
+		self.points_against = 0
+		self.points_against_list = [] 
+		self.games = []
+		self.results = Results()
+		self.statistics = Statistics()
+		
+class Results(object):
+	def __init__(self):
 		self.wins = 0
 		self.losses = 0
-		self.ties = 0
-		self.points_scored = 0
-		self.points_against = 0
-		self.margin_mean = 0
-		self.margin_stdev = 0 
-		self.games = []
+		self.ties = 0 
 	
+class Statistics(object):
+	def __init__(self):
+		self.margins = []
+		self.win_margins = []
+		self.loss_margins = []
+		self.margin_mean = 0
+		self.margin_stdev = 0
+		self.average_loss_margin = 0
+		self.average_loss_margin_stdev = 0
+		self.average_win_margin = 0
+		self.average_win_margin_stdev = 0
+		self.average_points_scored = 0
+		self.average_points_scored_stdev = 0
+		self.average_points_against = 0
+		self.average_points_against_stdev = 0
+
 class Game(object):
 	def __init__(self):
 		self.own_score = 0
@@ -38,6 +59,7 @@ class Worker:
 			
 		def clear(self):
 			self.game_list = []
+			self.team_list = []
 			for name in self.teams:
 				self.team_list.append(self.create_team(name))
 
@@ -137,12 +159,12 @@ class Worker:
 		def score_season(self):
 			for game in self.game_list:
 				self.read_results_for_one_game(game)
-			print ('name wins losses ties points_scored points_against margin_mean margin_stdev total_games')	
+#			print ('name wins losses ties points_scored points_against margin_mean margin_stdev total_games')	
 
 			for team in self.team_list:
 				
 				self.create_season_stats(team)
-				print (team.name, team.wins, team.losses, team.ties, team.points_scored, team.points_against, team.margin_mean, team.margin_stdev, team.wins+team.losses+team.ties)
+#				print (team.name, team.results.wins, team.results.losses, team.results.ties, team.points_scored, team.points_against, team.statistics.margin_mean, team.statistics.margin_stdev, team.results.wins+team.results.losses+team.results.ties)
 
 			
 		def calculate_one_season(self, season):
@@ -153,7 +175,7 @@ class Worker:
 		def calculate_one_old_season(self, season):
 			self.clear()
 			self.import_old_season(season)
-			#self.score_season()
+			self.score_season()
 		
 		def calculate_all_seasons(self):
 			self.clear()
@@ -162,43 +184,165 @@ class Worker:
 			for season in (2008, 2009, 2010, 2011):
 				self.import_old_season(season)
 			self.score_season()
+			
+		def count_result_for_game(self, team, game):
+			self.add_scores_for_game(team, game)
+			if game.result == 'WIN': 
+				team.results.wins += 1
+				self.add_margins_for_win(team, game)
+			elif game.result == 'LOSS':
+				team.results.losses += 1
+				self.add_margins_for_loss(team, game)
+			elif game.result == 'TIE':
+				team.results.ties += 1
+				self.add_margins_for_tie(team, game)
+
+		def add_scores_for_game(self, team, game):
+			team.points_scored += game.own_score
+			team.points_scored_list.append(game.own_score)
+			team.points_against += game.other_score
+			team.points_against_list.append(game.other_score)
+			
+		def add_margins_for_win(self, team, game):
+			team.statistics.margins.append(game.margin)
+			team.statistics.win_margins.append(game.margin)
+		
+		def add_margins_for_loss(self, team, game):
+			team.statistics.margins.append(game.margin)
+			team.statistics.loss_margins.append(game.margin)
+			
+		def add_margins_for_tie(self, team, game):
+			team.statistics.margins.append(game.margin)
+				
 				
 		def create_season_stats(self, team):
-			margins = []
+
 			for game in team.games:
-				if game.result == 'WIN': 
-					team.wins += 1
-				elif game.result == 'LOSS':
-					team.losses += 1
-				elif game.result == 'TIE':
-					team.ties += 1
-					
-				team.points_scored += game.own_score
-				team.points_against += game.other_score
-				margins.append(game.margin)
-
-			team.margin_mean = statistics.mean(margins)
-			team.margin_mean = float("{0:.3f}".format(team.margin_mean))
-			team.margin_stdev = statistics.stdev(margins)
-			team.margin_stdev = float("{0:.3f}".format(team.margin_stdev))
+				self.count_result_for_game(team, game)
+			self.calculate_statistics(team)
 		
-		def write_to_file(self):
-#			input = open('Resultat', 'w')
-			with open('Resultat.csv', 'w') as csvfile:
-				spamwriter = csv.writer(csvfile, delimiter=',',quotechar='|', quoting=csv.QUOTE_MINIMAL)
-				spamwriter.writerow(['team', 'wins', 'losses', 'ties', 'points_scored', 'points_against', 'margin_mean', 'margin_stdev', 'total_games'])	
-
-				for team in self.team_list:
-					spamwriter.writerow([team.name, team.wins, team.losses, team.ties, team.points_scored, team.points_against, team.margin_mean, team.margin_stdev, team.wins+team.losses+team.ties])
-
-#			input.close()
+		def calculate_statistics(self, team):
+			#print ('Hej: ', team.name)
+			#print (team.statistics.win_margins)
+			team.statistics.margin_mean = statistics.mean(team.statistics.margins)
+			team.statistics.margin_mean = float("{0:.3f}".format(team.statistics.margin_mean))
+			team.statistics.margin_stdev = statistics.stdev(team.statistics.margins)
+			team.statistics.margin_stdev = float("{0:.3f}".format(team.statistics.margin_stdev))
+			
+			team.statistics.average_win_margin = statistics.mean(team.statistics.win_margins)
+			team.statistics.average_win_margin = float("{0:.3f}".format(team.statistics.average_win_margin))
+				
+			if len(team.statistics.win_margins) > 1:
+				team.statistics.average_win_margin_stdev = statistics.stdev(team.statistics.win_margins)
+				team.statistics.average_win_margin_stdev = float("{0:.3f}".format(team.statistics.average_win_margin_stdev))
+			else:
+				team.statistics.average_win_margin_stdev = 0
+			
+			team.statistics.average_loss_margin = statistics.mean(team.statistics.loss_margins)
+			team.statistics.average_loss_margin = float("{0:.3f}".format(team.statistics.average_loss_margin))
+				
+			if len(team.statistics.loss_margins) > 1:
+				team.statistics.average_loss_margin_stdev = statistics.stdev(team.statistics.loss_margins)
+				team.statistics.average_loss_margin_stdev = float("{0:.3f}".format(team.statistics.average_loss_margin_stdev))
+			else:
+				team.statistics.average_loss_margin_stdev = 0
+				
+			team.statistics.average_points_scored = statistics.mean(team.points_scored_list)
+			team.statistics.average_points_scored = float("{0:.3f}".format(team.statistics.average_points_scored))
+			team.statistics.average_points_scored_stdev = statistics.stdev(team.points_scored_list)
+			team.statistics.average_points_scored_stdev = float("{0:.3f}".format(team.statistics.average_points_scored_stdev))
+			
+			team.statistics.average_points_against = statistics.mean(team.points_against_list)
+			team.statistics.average_points_against = float("{0:.3f}".format(team.statistics.average_points_against))
+			team.statistics.average_points_against_stdev = statistics.stdev(team.points_against_list)
+			team.statistics.average_points_against_stdev = float("{0:.3f}".format(team.statistics.average_points_against_stdev))
+			
+			
 		
+		
+		def write_to_xlsx(self):
+			# Create a workbook and add a worksheet.
+			workbook = xlsxwriter.Workbook('Resultat.xlsx')
+			self.write_xlsx_sheet(workbook)
+			workbook.close()
+			
+			
+		def write_xlsx_sheet(self, workbook, name='Resultat'):
+			print (name)
+			worksheet = workbook.add_worksheet(str(name))
+			row = 0
+			col = 1
+			# Start from the first cell. Rows and columns are zero indexed.
+			worksheet.write(row, col-1,   'Year')
+			worksheet.write(row, col,     'Team')
+			worksheet.write(row, col + 1, 'Wins')
+			worksheet.write(row, col + 2, 'Losses')
+			worksheet.write(row, col + 3, 'Ties')
+			worksheet.write(row, col + 4, 'Points scored')
+			worksheet.write(row, col + 5, 'Points against')
+			worksheet.write(row, col + 6, 'Margin mean')
+			worksheet.write(row, col + 7, 'Margin stdev')
+			worksheet.write(row, col + 8, 'Total games')
+			worksheet.write(row, col + 9, 'Avg win margin')
+			worksheet.write(row, col + 10, 'Avg win margin stdev')
+			worksheet.write(row, col + 11, 'Avg loss margin')
+			worksheet.write(row, col + 12, 'Avg loss margin stdev')
+			worksheet.write(row, col + 13, 'Avg Points scored')
+			worksheet.write(row, col + 14, 'Avg Points scored stdev')
+			worksheet.write(row, col + 15, 'Avg Points against')
+			worksheet.write(row, col + 16, 'Avg Points against stdev')
+			row = 1
+			# Iterate over the data and write it out row by row.
+			for team in self.team_list:
+				worksheet.write(row, col-1,   name)
+				worksheet.write(row, col,     team.name)
+				worksheet.write(row, col + 1, team.results.wins)
+				worksheet.write(row, col + 2, team.results.losses)
+				worksheet.write(row, col + 3, team.results.ties)
+				worksheet.write(row, col + 4, team.points_scored)
+				worksheet.write(row, col + 5, team.points_against)
+				worksheet.write(row, col + 6, team.statistics.margin_mean)
+				worksheet.write(row, col + 7, team.statistics.margin_stdev)
+				worksheet.write(row, col + 8, team.results.wins+team.results.losses+team.results.ties)
+				worksheet.write(row, col + 9, team.statistics.average_win_margin)
+				worksheet.write(row, col + 10, team.statistics.average_win_margin_stdev)
+				worksheet.write(row, col + 11, team.statistics.average_loss_margin)
+				worksheet.write(row, col + 12, team.statistics.average_loss_margin_stdev)
+				worksheet.write(row, col + 13, team.statistics.average_points_scored)
+				worksheet.write(row, col + 14, team.statistics.average_points_scored_stdev)
+				worksheet.write(row, col + 15, team.statistics.average_points_against)
+				worksheet.write(row, col + 16, team.statistics.average_points_against_stdev)
+						
+				row += 1
+				
+				
+
+		def calculate_all_seasons_individually_and_write_to_xlsx(self):
+			workbook = xlsxwriter.Workbook('Resultat.xlsx')
+			
+			self.calculate_all_seasons()
+			self.write_xlsx_sheet(workbook, 'Totalt')
+			
+			for season in (2017, 2016, 2015, 2014, 2013, 2012):
+			#	print ('ÅR: ', season)
+				self.calculate_one_season(season)
+				self.write_xlsx_sheet(workbook, season)
+			
+			for season in (2011, 2010, 2009, 2008):
+				self.calculate_one_old_season(season)
+				self.write_xlsx_sheet(workbook, season)
+				
+			
+				
+			workbook.close()
+			
 if __name__ == "__main__":
 		x = Worker()
 #		x.calculate_one_season(2017)
-		x.calculate_all_seasons()
+#		x.calculate_all_seasons()
 #		x.calculate_one_old_season(2011)
-		x.write_to_file()
-	
+#		x.write_to_xlsx()
+		x.calculate_all_seasons_individually_and_write_to_xlsx()
+
 		
 	
